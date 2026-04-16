@@ -33,8 +33,8 @@ mongoose.connection.on('disconnected', () => {
 });
 
 // ===================== GMAIL OTP =====================
-const GMAIL_USER = 'alvone18298@gmail.com';
-const GMAIL_PASS = process.env.GMAIL_PASS || 'zhzpginyyzscsqzo';
+const GMAIL_USER = 'orvion18298@gmail.com';
+const GMAIL_PASS = process.env.GMAIL_PASS || 'sqqbodiwrbtsbbrw';
 
 const mailer = nodemailer.createTransport({
   service: 'gmail',
@@ -67,7 +67,7 @@ async function sendAdminEmail(subject, htmlBody) {
 async function sendOTPEmail(toEmail, otp) {
   try {
     await mailer.sendMail({
-      from: '"B-Money 💰" <alvone18298@gmail.com>',
+      from: `"B-Money 💰" <${GMAIL_USER}>`,
       to: toEmail,
       subject: `Your B-Money OTP: ${otp}`,
       html: `
