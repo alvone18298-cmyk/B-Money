@@ -769,7 +769,7 @@ function toggleWd(idx){
         toast('⚠️ '+def.name+': '+(d.message||'Request failed'));
       }
     });
-    toast('▶️ Processing... Balance ₹'+totalBal.toFixed(2)+' → Withdrawal ₹'+maxAmt+' (100 ka multiple)');
+    toast('▶️ Processing... Balance ₹'+totalBal.toFixed(2)+' → Withdrawal ₹'+maxAmt+' (Multiple of 100)');
   } else {
     toast('⏸ Auto-Withdraw OFF — '+getWalletDef(t.typeId).name);
   }
