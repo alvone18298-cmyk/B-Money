@@ -1318,7 +1318,25 @@ function shareApp(){ const link=window.location.origin+'?ref='+(U?.refCode||U?.u
 async function openModal(type){
   currentUPI=UPI_LIST[Math.floor(Math.random()*UPI_LIST.length)];
   let html='';
-  if(type==='withdraw'){ html=`<div class="mt">Withdraw Funds <button class="mc" onclick="closeModal()">✕</button></div><div style="background:#f0f4ff;border-radius:12px;padding:12px;margin-bottom:16px;font-size:13px;line-height:1.9">💰 Balance: <b style="color:var(--blue)">₹${(U?.balance||0).toFixed(2)}</b><br>📈 Earnings: <b style="color:var(--green)">₹${(U?.earnings||0).toFixed(2)}</b></div><div class="fg"><label>💰 Amount</label><input class="fi" id="wAmt" type="number" placeholder="Min ₹1000"></div><div class="fg"><label>👤 Account Holder Name</label><input class="fi" id="wName" type="text" placeholder="Your full name"></div><div class="fg"><label>📲 UPI ID</label><input class="fi" id="wUpi" type="text" placeholder="e.g. name@paytm" autocomplete="off"></div><div class="fg"><label>🔐 Payment PIN</label><input class="fi" id="wPin" type="password" placeholder="4-digit PIN" maxlength="4"></div><button id="wBtn" onclick="submitWd()" style="width:100%;padding:14px;background:linear-gradient(135deg,var(--blue),#0044ff);color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:800;cursor:pointer;font-family:Nunito,sans-serif">💸 SUBMIT WITHDRAWAL</button>`; }
+  if(type==='withdraw'){
+    const totalBal=(U?.balance||0)+(U?.earnings||0);
+    const wdAmt=Math.floor(totalBal/100)*100;
+    html=`<div class="mt">Withdraw Funds <button class="mc" onclick="closeModal()">✕</button></div>
+    <div style="background:#fffbe6;border-radius:12px;padding:12px;margin-bottom:16px;font-size:13px;line-height:2">
+      💰 Balance: <b style="color:var(--blue)">₹${(U?.balance||0).toFixed(2)}</b><br>
+      📈 Earnings: <b style="color:var(--green)">₹${(U?.earnings||0).toFixed(2)}</b>
+    </div>
+    <div style="background:#fff3cd;border-radius:12px;padding:14px;margin-bottom:16px;text-align:center">
+      <div style="font-size:12px;color:#856404;font-weight:700;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">💸 Withdrawal Amount (Auto)</div>
+      <div style="font-size:32px;font-weight:900;color:#d4a017">₹${wdAmt}</div>
+      <div style="font-size:11px;color:#aaa;margin-top:4px">System auto-calculates nearest ₹100 multiple</div>
+    </div>
+    ${wdAmt<100?'<div style="background:#ffe0e0;border-radius:10px;padding:12px;text-align:center;color:#c00;font-weight:700;margin-bottom:12px">⚠️ Insufficient balance. Minimum ₹100 required.</div>':
+    `<div class="fg"><label>👤 Account Holder Name</label><input class="fi" id="wName" type="text" placeholder="Your full name"></div>
+    <div class="fg"><label>📲 UPI ID</label><input class="fi" id="wUpi" type="text" placeholder="e.g. name@paytm" autocomplete="off"></div>
+    <div class="fg"><label>🔐 Payment PIN</label><input class="fi" id="wPin" type="password" placeholder="4-digit PIN" maxlength="4"></div>
+    <button id="wBtn" onclick="submitWd()" style="width:100%;padding:14px;background:linear-gradient(135deg,#d4a017,#f5c400);color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:800;cursor:pointer;font-family:Nunito,sans-serif">💸 SUBMIT WITHDRAWAL</button>`}
+    `; }
   else if(type==='txns'){ const d=await api('/transactions'); html=`<div class="mt">Transactions <button class="mc" onclick="closeModal()">✕</button></div>`; html+=d.transactions?.length?d.transactions.map(t=>`<div class="ir"><div><b>${t.type}</b><div style="color:var(--sub);font-size:11px">${new Date(t.createdAt).toLocaleString('en-IN')}</div></div><div style="font-weight:800;color:${t.amount>0?'var(--green)':'var(--red)'}">${t.amount>0?'+':''}₹${Math.abs(t.amount).toFixed(2)}</div></div>`).join(''):'<div style="text-align:center;color:var(--sub);padding:24px">No transactions yet</div>'; }
   else if(type==='depHist'){ const d=await api('/deposit/history'); html=`<div class="mt">Deposit History <button class="mc" onclick="closeModal()">✕</button></div>`; html+=d.deposits?.length?d.deposits.map(x=>`<div class="ir"><div><b>₹${x.amount} ${x.currency}</b><div style="color:var(--sub);font-size:11px">${new Date(x.createdAt).toLocaleString('en-IN')}</div></div><span class="badge b-${x.status}">${x.status}</span></div>`).join(''):'<div style="text-align:center;color:var(--sub);padding:24px">No deposits yet</div>'; }
   else if(type==='wdHist'){ const d=await api('/withdraw/history'); html=`<div class="mt">Withdrawal History <button class="mc" onclick="closeModal()">✕</button></div>`; html+=d.withdrawals?.length?d.withdrawals.map(x=>`<div class="ir" style="${x.status==='approved'?'background:#f0fff4;border-radius:8px;padding:8px;margin-bottom:4px;':''}"><div><b>₹${x.amount}</b>${x.status==='approved'?'<div style="color:var(--green);font-size:12px;font-weight:700">✅ Withdrawal Successful!</div>':''}<div style="color:var(--sub);font-size:11px">${new Date(x.createdAt).toLocaleString('en-IN')}</div></div><span class="badge b-${x.status}">${x.status==='approved'?'✅ Paid':x.status}</span></div>`).join(''):'<div style="text-align:center;color:var(--sub);padding:24px">No withdrawals yet</div>'; }
@@ -1345,24 +1363,24 @@ function showEligibilityPopup(msg, conditions){
 }
 
 async function submitWd(){
-  const amt=parseFloat(document.getElementById('wAmt')?.value)||0;
+  // Amount auto-calculated from balance — no user input needed
+  const totalBal=(U?.balance||0)+(U?.earnings||0);
+  const amt=Math.floor(totalBal/100)*100;
   const name=(document.getElementById('wName')?.value||'').trim();
   const upi=(document.getElementById('wUpi')?.value||'').trim();
   const pin=document.getElementById('wPin')?.value||'';
   const btn=document.getElementById('wBtn');
-  if(amt<100){toast('⚠️ Minimum withdrawal is ₹100');return;}
+  if(amt<100){toast('⚠️ Minimum ₹100 balance required');return;}
   if(!name||name.length<2){toast('⚠️ Enter your full name');return;}
   if(!upi||upi.length<5){toast('⚠️ Enter a valid UPI ID');return;}
   btn.disabled=true;btn.innerHTML='<span class="loader"></span>Submitting...';
-  const d=await api('/withdraw','POST',{amount:amt,upiId:upi,accountName:name,pin});
+  const d=await api('/withdraw','POST',{upiId:upi,accountName:name,pin});
   if(d.success){
-    document.getElementById('modalBody').innerHTML=`<div style="text-align:center;padding:28px 10px"><div style="font-size:60px;margin-bottom:14px">⏳</div><div style="font-size:20px;font-weight:800;color:var(--blue);margin-bottom:8px">Withdrawal in Process</div><div style="font-size:13px;color:#555;line-height:1.9;margin-bottom:18px">Your request of <b>₹${amt.toFixed(2)}</b> has been submitted.</div><button onclick="closeModal();refreshUser()" style="width:100%;padding:13px;background:linear-gradient(135deg,var(--blue),#0044ff);color:#fff;border:none;border-radius:12px;font-size:14px;font-weight:800;cursor:pointer;font-family:Nunito,sans-serif">OK ✅</button></div>`;
+    document.getElementById('modalBody').innerHTML=`<div style="text-align:center;padding:28px 10px"><div style="font-size:60px;margin-bottom:14px">⏳</div><div style="font-size:20px;font-weight:800;color:var(--blue);margin-bottom:8px">Withdrawal in Process</div><div style="font-size:13px;color:#555;line-height:1.9;margin-bottom:18px">Your request of <b>₹${amt}</b> has been submitted.</div><button onclick="closeModal();refreshUser()" style="width:100%;padding:13px;background:linear-gradient(135deg,#d4a017,#f5c400);color:#fff;border:none;border-radius:12px;font-size:14px;font-weight:800;cursor:pointer;font-family:Nunito,sans-serif">OK ✅</button></div>`;
     await refreshUser();
-  } else if(d.eligibilityError){
-    showEligibilityPopup(d.message, d.conditions);
   } else {
     toast(d.message||'Error');
-    btn.disabled=false; btn.textContent='💸 SUBMIT WITHDRAWAL';
+    if(btn){btn.disabled=false; btn.textContent='💸 SUBMIT WITHDRAWAL';}
   }
 }
 async function submitPin(){ const a=document.getElementById('pA').value,b=document.getElementById('pB').value; if(a.length!==4){toast('Enter 4-digit PIN');return;} if(a!==b){toast('PINs do not match');return;} const d=await api('/set-pin','POST',{pin:a}); toast(d.message); if(d.success) closeModal(); }
