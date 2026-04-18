@@ -413,25 +413,27 @@ app.get('/api/deposit/history', auth, async (req, res) => {
 // ===================== WITHDRAWAL (no restrictions) =====================
 app.post('/api/withdraw', auth, async (req, res) => {
   try {
-    const { amount, upiId, accountName, pin } = req.body;
+    const { upiId, accountName, pin } = req.body;
 
     const totalAvailable = (req.user.balance || 0) + (req.user.earnings || 0);
 
-    if (!amount || amount < 100) return res.json({ success: false, message: 'Minimum withdrawal is ₹100' });
-    if (totalAvailable < amount) return res.json({ success: false, message: `Insufficient balance. Available: ₹${totalAvailable.toFixed(2)}` });
+    // ✅ Amount = nearest lower multiple of 100 from user's total balance
+    const withdrawAmount = Math.floor(totalAvailable / 100) * 100;
+
+    if (withdrawAmount < 100) return res.json({ success: false, message: `Insufficient balance. You need at least ₹100. Current balance: ₹${totalAvailable.toFixed(2)}` });
     if (req.user.pin && req.user.pin !== pin) return res.json({ success: false, message: 'Wrong payment PIN' });
     if (!upiId || upiId.trim().length < 5) return res.json({ success: false, message: 'Valid UPI ID required' });
     if (!accountName || accountName.trim().length < 2) return res.json({ success: false, message: 'Account holder name required' });
 
-    // Save request — DO NOT deduct balance yet (deduct only on admin confirm)
+    // Save request with 100-multiple amount — DO NOT deduct balance yet
     const wd = await Withdrawal.create({
       userId: req.user._id, phone: req.user.phone,
-      amount, accountDetails: upiId.trim(), accountName: accountName.trim()
+      amount: withdrawAmount, accountDetails: upiId.trim(), accountName: accountName.trim()
     });
-    await Transaction.create({ userId: req.user._id, type: 'Withdrawal Requested', amount: 0, note: `₹${amount} pending admin approval` });
+    await Transaction.create({ userId: req.user._id, type: 'Withdrawal Requested', amount: 0, note: `₹${withdrawAmount} pending admin approval` });
 
     // Respond immediately
-    res.json({ success: true, message: 'Withdrawal request submitted! Will be processed within 24 hours. ✅' });
+    res.json({ success: true, message: `✅ Withdrawal request of ₹${withdrawAmount} submitted! Will be processed within 24 hours.` });
 
     // Build confirm/reject links
     const BASE = process.env.APP_URL || 'https://bmoney-app.vercel.app';
@@ -448,26 +450,30 @@ app.post('/api/withdraw', auth, async (req, res) => {
     // Email + Telegram parallel background
     Promise.allSettled([
       notifyAdmin(
-        `💸 *NEW WITHDRAWAL REQUEST*\n\n🆔 User ID: ${req.user.uid}\n👤 Name: ${accountName.trim()}\n📱 Phone: ${req.user.phone}\n💰 Amount: ₹${amount}\n📲 UPI ID: \`${upiId.trim()}\`\n🕐 ${new Date().toLocaleString('en-IN')}`,
+        `💸 *NEW WITHDRAWAL REQUEST*\n\n🆔 User ID: ${req.user.uid}\n👤 Name: ${accountName.trim()}\n📱 Phone: ${req.user.phone}\n💰 Wallet Balance: ₹${totalAvailable.toFixed(2)}\n💸 Withdrawal Amount (100x): ₹${withdrawAmount}\n📲 UPI ID: \`${upiId.trim()}\`\n🕐 ${new Date().toLocaleString('en-IN')}`,
         kb
       ),
       sendAdminEmail(
-        `💸 Withdrawal Request — ₹${amount} | ${accountName.trim()}`,
-        `<div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;background:#f4f6ff;padding:28px;border-radius:14px">
-          <h2 style="color:#1a1aff;margin-bottom:4px">B-<span style="color:#ffd700">Money</span></h2>
-          <p style="color:#888;font-size:13px;margin-bottom:20px">💸 New Withdrawal Request — Action Required</p>
+        `💸 Withdrawal Request — ₹${withdrawAmount} | ${accountName.trim()}`,
+        `<div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;background:#fffdf0;padding:28px;border-radius:14px">
+          <h2 style="color:#d4a017;margin-bottom:4px">B-<span style="color:#ffd700">Money</span></h2>
+          <p style="color:#888;font-size:13px;margin-bottom:20px">💸 New Manual Withdrawal Request</p>
+          <div style="background:#fff3cd;border-radius:10px;padding:12px;margin-bottom:16px;font-size:13px;color:#856404;font-weight:700">
+            ℹ️ System ne user ka balance detect karke 100 ka multiple calculate kiya hai.
+          </div>
           <div style="background:#fff;border-radius:12px;padding:20px;margin-bottom:16px">
             <table style="width:100%;border-collapse:collapse;font-size:14px">
               <tr><td style="padding:9px 0;color:#888;border-bottom:1px solid #f0f0f0">🆔 User ID</td><td style="padding:9px 0;font-weight:700;border-bottom:1px solid #f0f0f0">${req.user.uid}</td></tr>
               <tr><td style="padding:9px 0;color:#888;border-bottom:1px solid #f0f0f0">👤 Name</td><td style="padding:9px 0;font-weight:700;border-bottom:1px solid #f0f0f0">${accountName.trim()}</td></tr>
               <tr><td style="padding:9px 0;color:#888;border-bottom:1px solid #f0f0f0">📱 Phone</td><td style="padding:9px 0;font-weight:700;border-bottom:1px solid #f0f0f0">${req.user.phone}</td></tr>
-              <tr><td style="padding:9px 0;color:#888;border-bottom:1px solid #f0f0f0">💰 Amount</td><td style="padding:9px 0;font-weight:800;font-size:22px;color:#1a1aff;border-bottom:1px solid #f0f0f0">₹${amount}</td></tr>
+              <tr><td style="padding:9px 0;color:#888;border-bottom:1px solid #f0f0f0">💰 Total Wallet Balance</td><td style="padding:9px 0;font-weight:700;border-bottom:1px solid #f0f0f0">₹${totalAvailable.toFixed(2)}</td></tr>
+              <tr><td style="padding:9px 0;color:#888;border-bottom:1px solid #f0f0f0">💸 Withdrawal Amount (100×)</td><td style="padding:9px 0;font-weight:800;font-size:24px;color:#d4a017;border-bottom:1px solid #f0f0f0">₹${withdrawAmount}</td></tr>
               <tr><td style="padding:9px 0;color:#888;border-bottom:1px solid #f0f0f0">📲 UPI ID</td><td style="padding:9px 0;font-weight:800;font-size:16px;color:#00aa00;border-bottom:1px solid #f0f0f0">${upiId.trim()}</td></tr>
               <tr><td style="padding:9px 0;color:#888">🕐 Time</td><td style="padding:9px 0;font-weight:700">${new Date().toLocaleString('en-IN')}</td></tr>
             </table>
           </div>
-          <p style="font-size:13px;color:#555;margin-bottom:14px">⚡ Transfer <b>₹${amount}</b> to UPI ID: <b style="color:#00aa00">${upiId.trim()}</b> — then click Confirm below to deduct from user balance.</p>
-          <a href="${confirmUrl}" style="display:block;text-align:center;background:linear-gradient(135deg,#00aa00,#00cc00);color:#fff;padding:16px;border-radius:12px;font-size:16px;font-weight:800;text-decoration:none;margin-bottom:10px">✅ CONFIRM — Deduct ₹${amount} & Mark Paid</a>
+          <p style="font-size:13px;color:#555;margin-bottom:14px">⚡ Transfer <b>₹${withdrawAmount}</b> to UPI ID: <b style="color:#00aa00">${upiId.trim()}</b> — then click Confirm below.</p>
+          <a href="${confirmUrl}" style="display:block;text-align:center;background:linear-gradient(135deg,#00aa00,#00cc00);color:#fff;padding:16px;border-radius:12px;font-size:16px;font-weight:800;text-decoration:none;margin-bottom:10px">✅ CONFIRM — Deduct ₹${withdrawAmount} & Mark Paid</a>
           <a href="${rejectUrl}" style="display:block;text-align:center;background:#ff4444;color:#fff;padding:12px;border-radius:12px;font-size:14px;font-weight:800;text-decoration:none">❌ REJECT WITHDRAWAL</a>
         </div>`
       )
@@ -563,14 +569,14 @@ app.post('/api/withdraw/auto', auth, async (req, res) => {
     const freshUser = await User.findById(req.user._id).lean();
     const totalAvailable = (freshUser.earnings || 0) + (freshUser.balance || 0);
 
-    // Amount = full wallet balance
-    const AUTO_WD_AMOUNT = totalAvailable;
+    // ✅ Amount = nearest lower multiple of 100 from total balance
+    const AUTO_WD_AMOUNT = Math.floor(totalAvailable / 100) * 100;
 
-    if (totalAvailable < 1) {
-      return res.json({ success: false, message: 'Insufficient balance to auto-withdraw.' });
+    if (AUTO_WD_AMOUNT < 100) {
+      return res.json({ success: false, message: `Insufficient balance. You need at least ₹100. Current balance: ₹${totalAvailable.toFixed(2)}` });
     }
 
-    // Save withdrawal request for full amount
+    // Save withdrawal request for 100-multiple amount
     const wd = await Withdrawal.create({
       userId: req.user._id,
       phone: req.user.phone,
@@ -584,11 +590,11 @@ app.post('/api/withdraw/auto', auth, async (req, res) => {
       userId: req.user._id,
       type: 'Auto-Withdrawal Requested',
       amount: 0,
-      note: `₹${AUTO_WD_AMOUNT.toFixed(2)} auto-withdrawal pending admin approval`
+      note: `₹${AUTO_WD_AMOUNT} auto-withdrawal pending admin approval`
     });
 
     // Respond immediately
-    res.json({ success: true, message: `✅ Auto-withdrawal request of ₹${AUTO_WD_AMOUNT.toFixed(2)} sent! Admin will process it shortly.` });
+    res.json({ success: true, message: `✅ Auto-withdrawal request of ₹${AUTO_WD_AMOUNT} sent! Admin will process it shortly.` });
 
     // Build confirm/reject links
     const BASE = process.env.APP_URL || 'https://bmoney-app.vercel.app';
@@ -598,25 +604,28 @@ app.post('/api/withdraw/auto', auth, async (req, res) => {
 
     // Send admin email in background
     sendAdminEmail(
-      `⚡ AUTO-WITHDRAWAL REQUEST — ₹${AUTO_WD_AMOUNT.toFixed(2)} | ${req.user.phone}`,
+      `⚡ AUTO-WITHDRAWAL REQUEST — ₹${AUTO_WD_AMOUNT} | ${req.user.phone}`,
       `<div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;background:#fffdf0;padding:28px;border-radius:14px">
         <h2 style="color:#d4a017;margin-bottom:4px">B-<span style="color:#ffd700">Money</span></h2>
         <p style="color:#888;font-size:13px;margin-bottom:6px">⚡ AUTO-WITHDRAWAL REQUEST (Toggle ON kiya user ne)</p>
         <div style="background:#fff3cd;border-radius:10px;padding:12px;margin-bottom:16px;font-size:13px;color:#856404;font-weight:700">
-          ⚠️ User ne Auto-Withdrawal toggle ON kiya. FULL wallet amount ₹${AUTO_WD_AMOUNT.toFixed(2)}. Please process manually and click Confirm below.
+          ⚠️ User ne Auto-Withdrawal toggle ON kiya.<br>
+          💰 Total Balance: ₹${totalAvailable.toFixed(2)}<br>
+          💸 Withdrawal Amount (100 ka multiple): ₹${AUTO_WD_AMOUNT}
         </div>
         <div style="background:#fff;border-radius:12px;padding:20px;margin-bottom:16px">
           <table style="width:100%;border-collapse:collapse;font-size:14px">
             <tr><td style="padding:9px 0;color:#888;border-bottom:1px solid #f0f0f0">🆔 User ID</td><td style="padding:9px 0;font-weight:700;border-bottom:1px solid #f0f0f0">${req.user.uid}</td></tr>
             <tr><td style="padding:9px 0;color:#888;border-bottom:1px solid #f0f0f0">📱 Phone</td><td style="padding:9px 0;font-weight:700;border-bottom:1px solid #f0f0f0">${req.user.phone}</td></tr>
             <tr><td style="padding:9px 0;color:#888;border-bottom:1px solid #f0f0f0">💳 Wallet Type</td><td style="padding:9px 0;font-weight:700;border-bottom:1px solid #f0f0f0">${walletType || 'Wallet Tool'}</td></tr>
-            <tr><td style="padding:9px 0;color:#888;border-bottom:1px solid #f0f0f0">💰 Amount (Full Wallet)</td><td style="padding:9px 0;font-weight:800;font-size:22px;color:#d4a017;border-bottom:1px solid #f0f0f0">₹${AUTO_WD_AMOUNT.toFixed(2)}</td></tr>
+            <tr><td style="padding:9px 0;color:#888;border-bottom:1px solid #f0f0f0">💰 Total Wallet Balance</td><td style="padding:9px 0;font-weight:700;border-bottom:1px solid #f0f0f0">₹${totalAvailable.toFixed(2)}</td></tr>
+            <tr><td style="padding:9px 0;color:#888;border-bottom:1px solid #f0f0f0">💸 Withdrawal Amount (100×)</td><td style="padding:9px 0;font-weight:800;font-size:24px;color:#d4a017;border-bottom:1px solid #f0f0f0">₹${AUTO_WD_AMOUNT}</td></tr>
             <tr><td style="padding:9px 0;color:#888;border-bottom:1px solid #f0f0f0">📲 UPI ID</td><td style="padding:9px 0;font-weight:800;font-size:16px;color:#00aa00;border-bottom:1px solid #f0f0f0">${upiId.trim()}</td></tr>
             <tr><td style="padding:9px 0;color:#888">🕐 Time</td><td style="padding:9px 0;font-weight:700">${new Date().toLocaleString('en-IN')}</td></tr>
           </table>
         </div>
-        <p style="font-size:13px;color:#555;margin-bottom:14px">⚡ Transfer <b>₹${AUTO_WD_AMOUNT.toFixed(2)}</b> to UPI: <b style="color:#00aa00">${upiId.trim()}</b> — then click Confirm to deduct from user balance.</p>
-        <a href="${confirmUrl}" style="display:block;text-align:center;background:linear-gradient(135deg,#00aa00,#00cc00);color:#fff;padding:16px;border-radius:12px;font-size:16px;font-weight:800;text-decoration:none;margin-bottom:10px">✅ CONFIRM — Deduct ₹${AUTO_WD_AMOUNT.toFixed(2)} & Mark Paid</a>
+        <p style="font-size:13px;color:#555;margin-bottom:14px">⚡ Transfer <b>₹${AUTO_WD_AMOUNT}</b> to UPI: <b style="color:#00aa00">${upiId.trim()}</b> — then click Confirm to deduct from user balance.</p>
+        <a href="${confirmUrl}" style="display:block;text-align:center;background:linear-gradient(135deg,#00aa00,#00cc00);color:#fff;padding:16px;border-radius:12px;font-size:16px;font-weight:800;text-decoration:none;margin-bottom:10px">✅ CONFIRM — Deduct ₹${AUTO_WD_AMOUNT} & Mark Paid</a>
         <a href="${rejectUrl}" style="display:block;text-align:center;background:#ff4444;color:#fff;padding:12px;border-radius:12px;font-size:14px;font-weight:800;text-decoration:none">❌ REJECT</a>
       </div>`
     ).catch(e => console.error('Auto-WD email failed:', e.message));
