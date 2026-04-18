@@ -750,7 +750,7 @@ function toggleWd(idx){
     // ✅ Amount = nearest lower multiple of 100
     const maxAmt = Math.floor(totalBal / 100) * 100;
     if(maxAmt < 100){
-      toast('⚠️ Minimum ₹100 balance chahiye. Current: ₹'+totalBal.toFixed(2));
+      toast('⚠️ Minimum ₹100 need to withdrawal. Current: ₹'+totalBal.toFixed(2));
       t.wdActive = false; userTools[idx]=t; saveTools(); renderToolScreen(); renderHomeAutoWdBanner(); return;
     }
     // Send auto-withdrawal request to backend (admin will get email)
@@ -764,12 +764,12 @@ function toggleWd(idx){
       autoWithdraw: true
     }).then(d=>{
       if(d.success){
-        toast('✅ Withdrawal Request Sent!\n💰 Balance: ₹'+totalBal.toFixed(2)+'\n💸 Amount (100×): ₹'+maxAmt);
+        toast('✅ ₹'+maxAmt+' processing! (×100 only)');
       } else {
         toast('⚠️ '+def.name+': '+(d.message||'Request failed'));
       }
     });
-    toast('▶️ Processing... Balance ₹'+totalBal.toFixed(2)+' → Withdrawal ₹'+maxAmt+' (Multiple of 100)');
+    toast('✅ ₹'+maxAmt+' withdrawal requested!');
   } else {
     toast('⏸ Auto-Withdraw OFF — '+getWalletDef(t.typeId).name);
   }
